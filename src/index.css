@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #020617;
+    color: #f8fafc;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+.massive-text {
+  font-size: 7rem;
+  line-height: 0.85;
+  letter-spacing: -0.06em;
+  font-weight: 900;
+}
+
+@media (min-width: 768px) {
+  .massive-text {
+    font-size: 10rem;
+  }
+}
+
+.godot-blue {
+  color: #478cbf;
+}
+
+.bg-darker {
+  background-color: #010409;
+}
+
+.bg-slate-925 {
+  background-color: #080d1a;
+}
+
+/* Custom crisp dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #010409;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
