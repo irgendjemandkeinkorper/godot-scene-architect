@@ -73,4 +73,4 @@ The current MVP is a planning and export bridge, not a Godot runtime or a GitHub
 
 ## License
 
-No license has been selected yet. Choose one before distributing the repository publicly.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
