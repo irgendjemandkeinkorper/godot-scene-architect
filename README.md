@@ -53,6 +53,7 @@ For a safer first run, export the ZIP and review the generated issue list before
 | --- | --- |
 | `npm run dev` | Start the Express + Vite development server |
 | `npm run lint` | Run TypeScript checks |
+| `npm test` | Run the test suite using Vitest |
 | `npm run build` | Build the browser app and production server |
 | `npm start` | Run the production build |
 
