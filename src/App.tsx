@@ -14,6 +14,7 @@ import { GitHubSyncModal } from './components/GitHubSyncModal';
 
 import { SCENE_PRESETS, ScenePreset } from './data/presets';
 import { TranslatedScenePlan, GodotVersion, GodotCameraMode, GitHubIssueItem } from './types';
+import { parseScenePlan } from './schema/scenePlan';
 import { Download, Upload, RotateCcw, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const BLUEPRINT_STORAGE_KEY = 'godot-scene-architect:blueprint:v1';
@@ -24,16 +25,12 @@ function readSavedBlueprint(): TranslatedScenePlan | null {
   try {
     const saved = window.localStorage.getItem(BLUEPRINT_STORAGE_KEY);
     if (!saved) return null;
-    const parsed = JSON.parse(saved) as Partial<TranslatedScenePlan>;
-    if (
-      typeof parsed.sceneTitle !== 'string' ||
-      !Array.isArray(parsed.nodeHierarchy) ||
-      !Array.isArray(parsed.gdscripts) ||
-      !Array.isArray(parsed.issues)
-    ) {
-      return null;
+    const parsed = JSON.parse(saved);
+    const result = parseScenePlan(parsed);
+    if (result.ok) {
+      return result.plan;
     }
-    return parsed as TranslatedScenePlan;
+    return null;
   } catch {
     return null;
   }
@@ -137,19 +134,12 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const imported = JSON.parse(String(reader.result)) as Partial<TranslatedScenePlan>;
-        if (
-          typeof imported.sceneTitle !== 'string' ||
-          typeof imported.description !== 'string' ||
-          !Array.isArray(imported.nodeHierarchy) ||
-          !Array.isArray(imported.modules) ||
-          !Array.isArray(imported.gdscripts) ||
-          !Array.isArray(imported.milestones) ||
-          !Array.isArray(imported.issues)
-        ) {
+        const parsed = JSON.parse(String(reader.result));
+        const result = parseScenePlan(parsed);
+        if (!result.ok) {
           throw new Error('This file is not a complete Godot blueprint.');
         }
-        setCurrentPlan(imported as TranslatedScenePlan);
+        setCurrentPlan(result.plan);
         setSelectedPresetId('');
         setPlanSource('imported');
         setErrorMessage('');
