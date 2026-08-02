@@ -336,22 +336,8 @@ export default function App() {
         <div className="flex space-x-6">
           <div className="flex items-center space-x-2">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Engine Bridge</span>
-            <span className="text-[10px] text-sky-400 font-bold">Godot 4.3</span>
+            <span className="text-[10px] text-sky-400 font-bold">{godotVersion}</span>
           </div>
-          <div className="hidden sm:flex items-center space-x-2">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Latency</span>
-            <span className="text-[10px] text-emerald-400">18ms</span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-4">
-          <div className="flex space-x-1 items-center">
-            <div className="w-2 h-2 bg-sky-400 rounded-full animate-pulse"></div>
-            <div className="w-2 h-2 bg-sky-400/30 rounded-full"></div>
-            <div className="w-2 h-2 bg-sky-400/30 rounded-full"></div>
-          </div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-sky-400">
-            SYSTEM OPTIMIZED
-          </span>
         </div>
       </footer>
 

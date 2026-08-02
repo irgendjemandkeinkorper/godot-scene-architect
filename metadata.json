@@ -1,6 +1,0 @@
-{
-  "name": "Godot Scene Architect & GitHub Task Generator",
-  "description": "Translates game scene ideas into modular Godot 4 engine node hierarchies, GDScript specifications, editor setup chains, and synchronized GitHub issues, milestones, and project boards.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
