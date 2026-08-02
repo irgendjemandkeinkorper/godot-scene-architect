@@ -43,17 +43,23 @@ describe('Scene Plan Zod Schema & Parser', () => {
     // String is invalid
     const result1 = parseScenePlan('garbage');
     expect(result1.ok).toBe(false);
-    expect(result1.issues).toBeDefined();
+    if (!result1.ok) {
+      expect((result1 as any).issues).toBeDefined();
+    }
 
     // Array is invalid
     const result2 = parseScenePlan([]);
     expect(result2.ok).toBe(false);
-    expect(result2.issues).toBeDefined();
+    if (!result2.ok) {
+      expect((result2 as any).issues).toBeDefined();
+    }
 
     // null is invalid
     const result3 = parseScenePlan(null);
     expect(result3.ok).toBe(false);
-    expect(result3.issues).toBeDefined();
+    if (!result3.ok) {
+      expect((result3 as any).issues).toBeDefined();
+    }
 
     // Field types totally wrong and cannot be parsed or coerced
     const result4 = parseScenePlan({
