@@ -15,9 +15,12 @@ import { GitHubSyncModal } from './components/GitHubSyncModal';
 import { SCENE_PRESETS, ScenePreset } from './data/presets';
 import { TranslatedScenePlan, GodotVersion, GodotCameraMode, GitHubIssueItem } from './types';
 import { parseScenePlan } from './schema/scenePlan';
+import { Run, hashBrief } from './runs/types';
+import { estimateCost } from './runs/cost';
 import { Download, Upload, RotateCcw, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const BLUEPRINT_STORAGE_KEY = 'godot-scene-architect:blueprint:v1';
+const RUN_STORAGE_KEY = 'godot-scene-architect:run:v2';
 
 function readSavedBlueprint(): TranslatedScenePlan | null {
   if (typeof window === 'undefined') return null;
@@ -36,12 +39,53 @@ function readSavedBlueprint(): TranslatedScenePlan | null {
   }
 }
 
+function createRun(plan: TranslatedScenePlan, provider: string, brief: Run['brief']): Run {
+  return {
+    id: `run-${Date.now()}`,
+    briefHash: hashBrief(brief),
+    brief,
+    provider,
+    model: provider === 'preset' ? 'Preset' : 'Imported blueprint',
+    status: 'succeeded',
+    startedAt: Date.now(),
+    plan,
+  };
+}
+
+function readSavedRun(): Run | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const savedRun = window.localStorage.getItem(RUN_STORAGE_KEY);
+    if (savedRun) {
+      const parsed = JSON.parse(savedRun) as Run;
+      if (parsed?.plan && parsed.status && parsed.briefHash) return parsed;
+    }
+    const blueprint = readSavedBlueprint();
+    if (!blueprint) return null;
+    const brief = {
+      prompt: blueprint.sceneTitle,
+      genre: blueprint.genre,
+      cameraMode: blueprint.cameraMode,
+      godotVersion: blueprint.godotVersion,
+    };
+    const run = createRun(blueprint, 'import', brief);
+    window.localStorage.setItem(RUN_STORAGE_KEY, JSON.stringify(run));
+    return run;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('tree');
   const [godotVersion, setGodotVersion] = useState<GodotVersion>('Godot 4.3');
-  const [selectedPresetId, setSelectedPresetId] = useState<string>(() => readSavedBlueprint() ? '' : SCENE_PRESETS[0].id);
-  const [currentPlan, setCurrentPlan] = useState<TranslatedScenePlan>(() => readSavedBlueprint() || SCENE_PRESETS[0].samplePlan);
-  const [planSource, setPlanSource] = useState<'preset' | 'ai' | 'imported'>(() => readSavedBlueprint() ? 'imported' : 'preset');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(() => readSavedRun() ? '' : SCENE_PRESETS[0].id);
+  const [currentRun, setCurrentRun] = useState<Run>(() => readSavedRun() || createRun(
+    SCENE_PRESETS[0].samplePlan,
+    'preset',
+    { prompt: SCENE_PRESETS[0].samplePlan.sceneTitle, genre: SCENE_PRESETS[0].samplePlan.genre, cameraMode: SCENE_PRESETS[0].samplePlan.cameraMode, godotVersion: SCENE_PRESETS[0].samplePlan.godotVersion },
+  ));
+  const currentPlan = currentRun.plan || SCENE_PRESETS[0].samplePlan;
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isGitHubModalOpen, setIsGitHubModalOpen] = useState<boolean>(false);
@@ -50,18 +94,22 @@ export default function App() {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(BLUEPRINT_STORAGE_KEY, JSON.stringify(currentPlan));
+      window.localStorage.setItem(RUN_STORAGE_KEY, JSON.stringify(currentRun));
       setLastSavedAt(new Date());
     } catch (err) {
       console.warn('Unable to save blueprint locally:', err);
     }
-  }, [currentPlan]);
+  }, [currentRun]);
 
   // Handle Preset Selection
   const handleSelectPreset = (preset: ScenePreset) => {
     setSelectedPresetId(preset.id);
-    setCurrentPlan(preset.samplePlan);
-    setPlanSource('preset');
+    setCurrentRun(createRun(preset.samplePlan, 'preset', {
+      prompt: preset.samplePlan.sceneTitle,
+      genre: preset.samplePlan.genre,
+      cameraMode: preset.samplePlan.cameraMode,
+      godotVersion: preset.samplePlan.godotVersion,
+    }));
     setErrorMessage('');
   };
 
@@ -70,6 +118,8 @@ export default function App() {
     setIsGenerating(true);
     setErrorMessage('');
     setRawOutput('');
+    const brief = { prompt, genre, cameraMode, godotVersion };
+    const startedAt = Date.now();
 
     try {
       const response = await fetch('/api/translate-scene', {
@@ -89,30 +139,32 @@ export default function App() {
         throw new Error(errData.error || errData.details || 'Failed to translate scene concept.');
       }
 
-      const generatedData: TranslatedScenePlan = await response.json();
+      const generatedResult = await response.json();
+      const generatedData: TranslatedScenePlan = generatedResult.plan;
 
       // Ensure fallback properties if any optional field missing
-      const fullPlan: TranslatedScenePlan = {
-        sceneTitle: generatedData.sceneTitle || 'Custom Godot Scene',
-        description: generatedData.description || 'AI-generated scene layout for Godot Engine.',
-        genre: generatedData.genre || genre,
-        godotVersion: godotVersion,
-        cameraMode: cameraMode,
-        nodeHierarchy: generatedData.nodeHierarchy || [],
-        modules: generatedData.modules || [],
-        gdscripts: generatedData.gdscripts || [],
-        tscnContent: generatedData.tscnContent || '',
-        projectGodotContent: generatedData.projectGodotContent || `; Engine configuration file for ${godotVersion}\nconfig_version=5\n`,
-        milestones: generatedData.milestones || [],
-        issues: generatedData.issues || [],
-      };
-
-      setCurrentPlan(fullPlan);
-      setPlanSource('ai');
+      const fullPlan = { ...generatedData, genre: generatedData.genre || genre, godotVersion, cameraMode };
+      const usage = generatedResult.usage;
+      const provider = generatedResult.provider || 'gemini';
+      const model = generatedResult.model || 'unknown';
+      setCurrentRun({
+        id: `run-${Date.now()}`,
+        briefHash: hashBrief(brief),
+        brief,
+        provider,
+        model,
+        status: 'succeeded',
+        startedAt: generatedResult.timings?.startedAt || startedAt,
+        latencyMs: generatedResult.timings?.latencyMs ?? Date.now() - startedAt,
+        usage,
+        costEstimateUSD: generatedResult.costEstimateUSD ?? estimateCost(usage, undefined),
+        plan: fullPlan,
+      });
       setSelectedPresetId('');
       setActiveTab('tree'); // Switch to Node Dock on generation
     } catch (err: any) {
       console.error('Error generating plan:', err);
+      setCurrentRun((previous) => ({ ...previous, status: 'failed', error: err.message || String(err) }));
       setErrorMessage(err.message || 'An error occurred while generating the Godot scene architecture.');
     } finally {
       setIsGenerating(false);
@@ -152,9 +204,13 @@ export default function App() {
         if (!result.ok) {
           throw new Error('This file is not a complete Godot blueprint.');
         }
-        setCurrentPlan(result.plan);
+        setCurrentRun(createRun(result.plan, 'import', {
+          prompt: result.plan.sceneTitle,
+          genre: result.plan.genre,
+          cameraMode: result.plan.cameraMode,
+          godotVersion: result.plan.godotVersion,
+        }));
         setSelectedPresetId('');
-        setPlanSource('imported');
         setErrorMessage('');
       } catch (err: any) {
         setErrorMessage(err.message || 'Unable to import blueprint JSON.');
@@ -164,30 +220,30 @@ export default function App() {
   };
 
   const handleResetBlueprint = () => {
-    setCurrentPlan(SCENE_PRESETS[0].samplePlan);
+    setCurrentRun(createRun(SCENE_PRESETS[0].samplePlan, 'preset', {
+      prompt: SCENE_PRESETS[0].samplePlan.sceneTitle,
+      genre: SCENE_PRESETS[0].samplePlan.genre,
+      cameraMode: SCENE_PRESETS[0].samplePlan.cameraMode,
+      godotVersion: SCENE_PRESETS[0].samplePlan.godotVersion,
+    }));
     setSelectedPresetId(SCENE_PRESETS[0].id);
-    setPlanSource('preset');
     setErrorMessage('');
   };
 
   // Handle Script updates
   const handleUpdateScript = (filename: string, newCode: string) => {
-    setCurrentPlan((prev) => ({
-      ...prev,
-      gdscripts: prev.gdscripts.map((sc) =>
-        sc.filename === filename ? { ...sc, code: newCode } : sc
-      ),
-    }));
+    setCurrentRun((prev) => ({ ...prev, plan: {
+      ...(prev.plan || currentPlan),
+      gdscripts: (prev.plan || currentPlan).gdscripts.map((sc) => sc.filename === filename ? { ...sc, code: newCode } : sc),
+    } }));
   };
 
   // Handle Issue Status Move
   const handleUpdateIssueStatus = (issueId: string, newStatus: GitHubIssueItem['status']) => {
-    setCurrentPlan((prev) => ({
-      ...prev,
-      issues: prev.issues.map((iss) =>
-        iss.id === issueId ? { ...iss, status: newStatus } : iss
-      ),
-    }));
+    setCurrentRun((prev) => ({ ...prev, plan: {
+      ...(prev.plan || currentPlan),
+      issues: (prev.plan || currentPlan).issues.map((iss) => iss.id === issueId ? { ...iss, status: newStatus } : iss),
+    } }));
   };
 
   return (
@@ -274,7 +330,7 @@ export default function App() {
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-400">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <span>
-                {planSource === 'ai' ? 'AI blueprint' : planSource === 'imported' ? 'Imported blueprint' : 'Preset blueprint'}
+                {currentRun.provider === 'preset' ? 'Preset blueprint' : currentRun.provider === 'import' ? 'Imported blueprint' : `${currentRun.provider} · ${currentRun.model}`}
                 {lastSavedAt ? ` · saved locally ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
               </span>
             </div>
@@ -347,6 +403,12 @@ export default function App() {
           <div className="flex items-center space-x-2">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Engine Bridge</span>
             <span className="text-[10px] text-sky-400 font-bold">{godotVersion}</span>
+          </div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">
+            {currentRun.provider} · {currentRun.model}
+            {currentRun.latencyMs != null ? ` · ${currentRun.latencyMs}ms` : ''}
+            {currentRun.usage?.inputTokens != null ? ` · ${currentRun.usage.inputTokens + (currentRun.usage.outputTokens || 0)} tokens` : ''}
+            {currentRun.costEstimateUSD != null ? ` · $${currentRun.costEstimateUSD.toFixed(4)}` : ''}
           </div>
         </div>
       </footer>

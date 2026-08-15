@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { getProvider } from './src/providers/registry';
+import { estimateCost } from './src/runs/cost';
 
 async function startServer() {
   const app = express();
@@ -50,7 +51,14 @@ async function startServer() {
         });
         return;
       }
-      res.json(result.data);
+      res.json({
+        plan: result.data,
+        provider: provider.id,
+        model: provider.defaultModel,
+        usage: result.usage,
+        costEstimateUSD: estimateCost(result.usage, provider.capabilities.costTable?.[provider.defaultModel]),
+        timings: result.timings,
+      });
     } catch (err: any) {
       console.error('Error generating Godot scene plan:', err);
       const status = err?.message?.includes('GEMINI_API_KEY') ? 503 : 500;
