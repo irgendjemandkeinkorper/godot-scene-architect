@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { Provider, ProviderResult, SceneBrief, RefineRequest, RefineResult } from './types';
 import { TranslatedScenePlan } from '../types';
 import { translatedScenePlanSchema, boundedNodeItemSchema } from '../schema/scenePlan';
+import { parseScenePlan } from '../schema/scenePlan';
+import { PipelineParseResult, resolvePlan } from './pipeline';
 
 /**
  * Converts a Zod schema into Google GenAI's schema representation.
@@ -119,6 +121,19 @@ const refineResultSchema = z.object({
     .optional(),
 });
 
+function parseRefineResult(input: unknown): PipelineParseResult<RefineResult> {
+  const result = refineResultSchema.safeParse(input);
+  return result.success
+    ? { ok: true, data: result.data }
+    : { ok: false, issues: result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`) };
+}
+
+function parseTranslatedScenePlan(input: unknown): PipelineParseResult<TranslatedScenePlan> {
+  const result = parseScenePlan(input);
+  if ('issues' in result) return { ok: false, issues: result.issues };
+  return { ok: true, data: result.plan };
+}
+
 /**
  * GeminiProvider is the concrete implementation of the Provider interface for Google's Gemini models.
  */
@@ -192,9 +207,9 @@ Generate the complete Godot Scene Architecture & GitHub Automated Project Plan.`
     const responseSchema = zodToGeminiSchema(schemaForGemini);
 
     const startedAt = Date.now();
-    const response = await ai.models.generateContent({
+    const request = (feedback = '') => ai.models.generateContent({
       model: modelName,
-      contents: promptMessage,
+      contents: feedback ? `${promptMessage}\n\n${feedback}` : promptMessage,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
@@ -202,15 +217,19 @@ Generate the complete Godot Scene Architecture & GitHub Automated Project Plan.`
         abortSignal: signal,
       },
     });
+    let response = await request();
+    const pipeline = await resolvePlan<TranslatedScenePlan>(
+      response.text || '{}',
+      async (feedback) => {
+        response = await request(feedback);
+        return response.text || '{}';
+      },
+      {
+        parser: parseTranslatedScenePlan,
+        maxRepairAttempts: 1,
+      },
+    );
     const latencyMs = Date.now() - startedAt;
-
-    const raw = response.text || '{}';
-    let data: TranslatedScenePlan | undefined;
-    try {
-      data = JSON.parse(raw) as TranslatedScenePlan;
-    } catch {
-      // Bare JSON parsing fallback
-    }
 
     const usage = response.usageMetadata
       ? {
@@ -220,8 +239,9 @@ Generate the complete Godot Scene Architecture & GitHub Automated Project Plan.`
       : undefined;
 
     return {
-      raw,
-      data,
+      raw: pipeline.rawText,
+      data: pipeline.data,
+      issues: pipeline.issues,
       usage,
       timings: {
         startedAt,
@@ -260,9 +280,9 @@ Generate an updated or expanded GDScript code block along with step-by-step Godo
     const responseSchema = zodToGeminiSchema(refineResultSchema);
 
     const startedAt = Date.now();
-    const response = await ai.models.generateContent({
+    const request = (feedback = '') => ai.models.generateContent({
       model: modelName,
-      contents: promptMessage,
+      contents: feedback ? `${promptMessage}\n\n${feedback}` : promptMessage,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
@@ -270,15 +290,16 @@ Generate an updated or expanded GDScript code block along with step-by-step Godo
         abortSignal: signal,
       },
     });
+    let response = await request();
+    const pipeline = await resolvePlan<RefineResult>(
+      response.text || '{}',
+      async (feedback) => {
+        response = await request(feedback);
+        return response.text || '{}';
+      },
+      { parser: parseRefineResult, maxRepairAttempts: 1 },
+    );
     const latencyMs = Date.now() - startedAt;
-
-    const raw = response.text || '{}';
-    let data: RefineResult | undefined;
-    try {
-      data = JSON.parse(raw) as RefineResult;
-    } catch {
-      // Bare JSON parsing fallback
-    }
 
     const usage = response.usageMetadata
       ? {
@@ -288,8 +309,9 @@ Generate an updated or expanded GDScript code block along with step-by-step Godo
       : undefined;
 
     return {
-      raw,
-      data,
+      raw: pipeline.rawText,
+      data: pipeline.data,
+      issues: pipeline.issues,
       usage,
       timings: {
         startedAt,

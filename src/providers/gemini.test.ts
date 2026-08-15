@@ -107,7 +107,7 @@ describe('Gemini Schema Converter & Adapter', () => {
       { apiKey: 'mock-key' }
     );
 
-    expect(result.data).toEqual({ sceneTitle: 'Mock Scene' });
+    expect(result.data?.sceneTitle).toBe('Mock Scene');
     expect(result.usage?.inputTokens).toBe(10);
     expect(result.usage?.outputTokens).toBe(20);
     expect(result.timings.latencyMs).toBeGreaterThanOrEqual(0);

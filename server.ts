@@ -42,7 +42,15 @@ async function startServer() {
       const brief = { prompt, genre, cameraMode, godotVersion };
       const result = await provider.generateScenePlan(brief, { apiKey });
 
-      res.json(result.data || JSON.parse(result.raw || '{}'));
+      if (!result.data) {
+        res.status(422).json({
+          error: 'The model returned an invalid scene plan.',
+          details: result.issues?.join(' ') || 'The response could not be validated.',
+          rawOutput: result.raw,
+        });
+        return;
+      }
+      res.json(result.data);
     } catch (err: any) {
       console.error('Error generating Godot scene plan:', err);
       const status = err?.message?.includes('GEMINI_API_KEY') ? 503 : 500;
@@ -78,7 +86,15 @@ async function startServer() {
       const reqObj = { nodeName, currentScript, userInstructions, sceneContext };
       const result = await provider.refineNode(reqObj, { apiKey });
 
-      res.json(result.data || JSON.parse(result.raw || '{}'));
+      if (!result.data) {
+        res.status(422).json({
+          error: 'The model returned an invalid refinement.',
+          details: result.issues?.join(' ') || 'The response could not be validated.',
+          rawOutput: result.raw,
+        });
+        return;
+      }
+      res.json(result.data);
     } catch (err: any) {
       console.error('Error refining Godot node:', err);
       const status = err?.message?.includes('GEMINI_API_KEY') ? 503 : 500;

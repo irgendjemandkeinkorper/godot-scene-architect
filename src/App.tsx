@@ -46,6 +46,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isGitHubModalOpen, setIsGitHubModalOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [rawOutput, setRawOutput] = useState<string>('');
 
   useEffect(() => {
     try {
@@ -68,6 +69,7 @@ export default function App() {
   const handleGeneratePlan = async (prompt: string, cameraMode: GodotCameraMode, genre: string) => {
     setIsGenerating(true);
     setErrorMessage('');
+    setRawOutput('');
 
     try {
       const response = await fetch('/api/translate-scene', {
@@ -83,6 +85,7 @@ export default function App() {
 
       if (!response.ok) {
         const errData = await response.json();
+        setRawOutput(typeof errData.rawOutput === 'string' ? errData.rawOutput : '');
         throw new Error(errData.error || errData.details || 'Failed to translate scene concept.');
       }
 
@@ -114,6 +117,16 @@ export default function App() {
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleDownloadRawOutput = () => {
+    const blob = new Blob([rawOutput], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'godot-scene-model-output.txt';
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleExportBlueprint = () => {
@@ -209,12 +222,19 @@ export default function App() {
                 <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0" />
                 <span className="font-mono">{errorMessage}</span>
               </div>
-              <button
-                onClick={() => setErrorMessage('')}
-                className="text-slate-400 hover:text-white font-mono font-bold"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-3">
+                {rawOutput && (
+                  <button onClick={handleDownloadRawOutput} className="text-rose-200 hover:text-white font-mono uppercase tracking-wider">
+                    Download raw output
+                  </button>
+                )}
+                <button
+                  onClick={() => { setErrorMessage(''); setRawOutput(''); }}
+                  className="text-slate-400 hover:text-white font-mono font-bold"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
 

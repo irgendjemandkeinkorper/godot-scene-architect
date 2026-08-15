@@ -57,6 +57,7 @@ export interface ProviderTimings {
 export interface ProviderResult<T> {
   raw: string;
   data?: T;
+  issues?: string[];
   usage?: ProviderUsage;
   timings: ProviderTimings;
 }
